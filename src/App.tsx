@@ -309,6 +309,41 @@ export default function App() {
     };
   });
 
+  const [authors, setAuthors] = useState<any[]>(() => {
+    const saved = localStorage.getItem("mgmt_cms_authors");
+    return saved ? JSON.parse(saved) : [
+      {
+        id: "author_1",
+        name: "Elton Boehnen",
+        role: "Lead Architect",
+        bio: "Elton Boehnen is the pioneer of the BEJSON data specification and chief architect behind Management_CMS. He specializes in lightweight, zero-dependency, single-administrator systems.",
+        profile_image: "/media/1000744483.png",
+        created_at: "2026-07-31T11:26:21Z"
+      }
+    ];
+  });
+
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<Record<string, boolean>>(() => {
+    const saved = localStorage.getItem("mgmt_cms_sidebar_collapsed");
+    return saved ? JSON.parse(saved) : {
+      cms: true,
+      userspace: true,
+      system: true
+    };
+  });
+
+  const [chatMessages, setChatMessages] = useState<any[]>(() => {
+    const saved = localStorage.getItem("mgmt_cms_chat_messages");
+    return saved ? JSON.parse(saved) : [
+      { sender: "assistant", text: "Hello! I am your Management_CMS assistant. I can review your content, write essays/articles, analyze your BEJSON databases, or help you generate professional author bios! How can I help you today?" }
+    ];
+  });
+  const [chatInput, setChatInput] = useState("");
+  const [isSending, setIsSending] = useState(false);
+  const [geminiApiKey, setGeminiApiKey] = useState(() => {
+    return localStorage.getItem("mgmt_cms_gemini_api_key") || "";
+  });
+
   // Synced local-storage hook
   useEffect(() => {
     localStorage.setItem("mgmt_cms_pages", JSON.stringify(pages));
@@ -324,13 +359,25 @@ export default function App() {
     localStorage.setItem("mgmt_cms_todo_items", JSON.stringify(todoItems));
     localStorage.setItem("mgmt_cms_task_categories", JSON.stringify(taskCategories));
     localStorage.setItem("mgmt_cms_settings", JSON.stringify(settings));
-  }, [pages, posts, categories, navLinks, tags, media, links, linkCategories, notes, noteCategories, todoItems, taskCategories, settings]);
+    localStorage.setItem("mgmt_cms_authors", JSON.stringify(authors));
+    localStorage.setItem("mgmt_cms_sidebar_collapsed", JSON.stringify(sidebarCollapsed));
+    localStorage.setItem("mgmt_cms_chat_messages", JSON.stringify(chatMessages));
+    localStorage.setItem("mgmt_cms_gemini_api_key", geminiApiKey);
+  }, [pages, posts, categories, navLinks, tags, media, links, linkCategories, notes, noteCategories, todoItems, taskCategories, settings, authors, sidebarCollapsed, chatMessages, geminiApiKey]);
 
   // UI Active Navigation Section state (Section 10.4 Horizontally-Scrolling Switcher)
   const [activeTab, setActiveTab] = useState<string>("Pages");
 
   // Selection states for Tab 3 (Assets)
   const [activeSchemaKey, setActiveSchemaKey] = useState<keyof typeof SCHEMAS>("Category");
+
+  const toggleSidebarGroup = (key: string) => {
+    setSidebarCollapsed(prev => {
+      const next = { ...prev, [key]: !prev[key] };
+      localStorage.setItem("sidebarCollapsed", JSON.stringify(next));
+      return next;
+    });
+  };
 
   // Modal / Editor State
   const [isEditorOpen, setIsEditorOpen] = useState(false);
@@ -390,6 +437,7 @@ export default function App() {
           const importedNoteCats = await loadBejsonFile("data/notecategory.bejson", noteCategories);
           const importedTodos = await loadBejsonFile("data/todoitem.bejson", todoItems);
           const importedTodoCats = await loadBejsonFile("data/taskcategory.bejson", taskCategories);
+          const importedAuthors = await loadBejsonFile("data/author.bejson", authors);
 
           const configEntry = zip.file("config/config.bejson");
           if (configEntry) {
@@ -414,6 +462,7 @@ export default function App() {
           setNoteCategories(importedNoteCats);
           setTodoItems(importedTodos);
           setTaskCategories(importedTodoCats);
+          setAuthors(importedAuthors);
 
           alert("Database imported successfully and matched 100% BEJSON binary specifications!");
         } catch (err: any) {
@@ -442,6 +491,7 @@ export default function App() {
     zip.file("data/notecategory.bejson", serializeStateToBejson("NoteCategory", noteCategories));
     zip.file("data/todoitem.bejson", serializeStateToBejson("TodoItem", todoItems));
     zip.file("data/taskcategory.bejson", serializeStateToBejson("TaskCategory", taskCategories));
+    zip.file("data/author.bejson", serializeStateToBejson("Author", authors));
 
     // Serialize Config to BEJSON 104a format
     const configRows = Object.keys(settings).map((key) => ({
@@ -470,6 +520,36 @@ export default function App() {
     linkEl.href = URL.createObjectURL(content);
     linkEl.download = "Management_CMS_bejson_database.zip";
     linkEl.click();
+  };
+
+  const downloadReportsMd = () => {
+    const mdContent = `# Management_CMS — Python Version Bug Reports\n\n`
+      + `## Bug 1: ComponentsMFDB record_count Manifest Drift\n`
+      + `- **Symptoms:** MFDB manifest validators threw integrity errors because the central manifest row count disagreed with on-disk database rows.\n`
+      + `- **Root Cause:** The database manifest in the library copy of ComponentsMFDB hardcoded \`record_count: 6\` despite the actual entity table containing 7 records. This caused automatic validation passes to fail loudly on launch.\n`
+      + `- **Mitigation:** Programmatically corrected manifest \`record_count\` to \`7\` via native JSON parsing, and registered a dynamic sync hook.\n\n`
+      + `## Bug 2: Empty site_url loopback fallback in OG/canonical tags\n`
+      + `- **Symptoms:** Exported static pages generated empty canonical and social OpenGraph tag properties.\n`
+      + `- **Root Cause:** The static builder pre-rendered relative tag contexts as blank values when \`site_url\` was empty or configured to loopback (e.g. \`http://127.0.0.1:5030\`) instead of cleanly degrading to root relative path \`/\`.\n`
+      + `- **Mitigation:** Rewrote static builders to default gracefully to root-relative pathing if the server address resolves to local interfaces.\n\n`
+      + `## Bug 3: Dangling foreign keys on page/post category deletion\n`
+      + `- **Symptoms:** Deleting a category resulted in orphaned metadata tags and broken category queries inside lists.\n`
+      + `- **Root Cause:** The \`delete_category()\` module operated in isolation from page and post databases. As a result, deleting a category row did not reach \`Content/Page\` to null out referencing \`category_id_fk\` values.\n`
+      + `- **Mitigation:** Structured a transactional cascade handler inside the route layer to recursively scan and update active page and post manifests when category deletions occur.\n\n`
+      + `## Bug 4: Admin Bearer Token Bypass on / root route\n`
+      + `- **Symptoms:** Complete security bypass of the \`X-Admin-Token\` bearer gate.\n`
+      + `- **Root Cause:** Version 5.1.0 exempted the root path \`/\` from the token verification check, but then immediately rendered the exact plaintext \`ADMIN_TOKEN\` into the raw HTML payload, rendering the gate entirely inert to network crawlers.\n`
+      + `- **Mitigation:** Removed the token context completely from template rendering, storing credentials exclusively inside the browser's \`sessionStorage\` upon positive console-assisted login.\n\n`
+      + `## Bug 5: Media delete physical file leaks\n`
+      + `- **Symptoms:** Storage space on mobile hosts became depleted after repeated media replacements.\n`
+      + `- **Root Cause:** The media delete API route cleared the relational database metadata row in \`media.bejson\` but omitted unlinking the actual physical image files (and their WebP variant siblings) from server storage.\n`
+      + `- **Mitigation:** Programmed filesystem unlinks on the server side preceding the database metadata deletion pass.\n`;
+
+    const blob = new Blob([mdContent], { type: "text/markdown" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = "Management_CMS_Python_Bug_Reports.md";
+    link.click();
   };
 
   // Run the static site pre-rendering build inside the browser!
@@ -530,7 +610,7 @@ export default function App() {
         <div className="h-16 flex items-center justify-between px-6 border-b border-zinc-800 shrink-0">
           <div className="flex items-center gap-2">
             <span className="font-display font-bold text-sm tracking-tight text-[#DE2626]">
-              MANAGEMENT_CMS
+              MANAGEMENT CMS (REACT)
             </span>
             <span className="font-mono text-[9px] text-zinc-500">v{APP_VERSION}</span>
           </div>
@@ -545,101 +625,121 @@ export default function App() {
         {/* Scrolling Nav Categories */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
           <div>
-            <div className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider px-3 mb-2">
-              CMS Content
+            <div
+              onClick={() => toggleSidebarGroup("cms")}
+              className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider px-3 mb-2 flex items-center justify-between cursor-pointer hover:text-white transition-colors select-none"
+            >
+              <span>CMS Content</span>
+              <span className="font-mono text-xs">{sidebarCollapsed.cms ? "[+]" : "[−]"}</span>
             </div>
-            <div className="space-y-1">
-              {[
-                { name: "Pages", icon: <FileText size={14} /> },
-                { name: "Posts", icon: <FileCode size={14} /> },
-                { name: "Categories", icon: <FolderOpen size={14} /> },
-                { name: "Site Nav", icon: <Compass size={14} /> },
-                { name: "Media", icon: <Image size={14} /> },
-                { name: "Build", icon: <FileCheck size={14} /> }
-              ].map((tab) => {
-                const active = activeTab === tab.name;
-                return (
-                  <button
-                    key={tab.name}
-                    onClick={() => {
-                      setActiveTab(tab.name);
-                      setIsSidebarOpen(false);
-                    }}
-                    className={`flex items-center gap-2.5 w-full px-3 py-2 text-xs font-semibold rounded transition-colors ${
-                      active
-                        ? "bg-[#DE2626] text-white"
-                        : "text-zinc-400 hover:bg-zinc-900 hover:text-white"
-                    }`}
-                  >
-                    {tab.icon}
-                    <span>{tab.name}</span>
-                  </button>
-                );
-              })}
-            </div>
+            {!sidebarCollapsed.cms && (
+              <div className="space-y-1">
+                {[
+                  { name: "Pages", icon: <FileText size={14} /> },
+                  { name: "Posts", icon: <FileCode size={14} /> },
+                  { name: "Categories", icon: <FolderOpen size={14} /> },
+                  { name: "Site Nav", icon: <Compass size={14} /> },
+                  { name: "Media", icon: <Image size={14} /> },
+                  { name: "Authors", icon: <Plus size={14} /> },
+                  { name: "Build", icon: <FileCheck size={14} /> }
+                ].map((tab) => {
+                  const active = activeTab === tab.name;
+                  return (
+                    <button
+                      key={tab.name}
+                      onClick={() => {
+                        setActiveTab(tab.name);
+                        setIsSidebarOpen(false);
+                      }}
+                      className={`flex items-center gap-2.5 w-full px-3 py-2 text-xs font-semibold rounded transition-colors ${
+                        active
+                          ? "bg-[#DE2626] text-white"
+                          : "text-zinc-400 hover:bg-zinc-900 hover:text-white"
+                      }`}
+                    >
+                      {tab.icon}
+                      <span>{tab.name}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           <div>
-            <div className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider px-3 mb-2">
-              Userspace
+            <div
+              onClick={() => toggleSidebarGroup("userspace")}
+              className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider px-3 mb-2 flex items-center justify-between cursor-pointer hover:text-white transition-colors select-none"
+            >
+              <span>Userspace</span>
+              <span className="font-mono text-xs">{sidebarCollapsed.userspace ? "[+]" : "[−]"}</span>
             </div>
-            <div className="space-y-1">
-              {[
-                { name: "Links", icon: <ExternalLink size={14} /> },
-                { name: "Notes", icon: <BookOpen size={14} /> },
-                { name: "To-Do", icon: <CheckSquare size={14} /> }
-              ].map((tab) => {
-                const active = activeTab === tab.name;
-                return (
-                  <button
-                    key={tab.name}
-                    onClick={() => {
-                      setActiveTab(tab.name);
-                      setIsSidebarOpen(false);
-                    }}
-                    className={`flex items-center gap-2.5 w-full px-3 py-2 text-xs font-semibold rounded transition-colors ${
-                      active
-                        ? "bg-[#DE2626] text-white"
-                        : "text-zinc-400 hover:bg-zinc-900 hover:text-white"
-                    }`}
-                  >
-                    {tab.icon}
-                    <span>{tab.name}</span>
-                  </button>
-                );
-              })}
-            </div>
+            {!sidebarCollapsed.userspace && (
+              <div className="space-y-1">
+                {[
+                  { name: "Links", icon: <ExternalLink size={14} /> },
+                  { name: "Notes", icon: <BookOpen size={14} /> },
+                  { name: "To-Do", icon: <CheckSquare size={14} /> },
+                  { name: "AI Assistant", icon: <Play size={14} /> }
+                ].map((tab) => {
+                  const active = activeTab === tab.name;
+                  return (
+                    <button
+                      key={tab.name}
+                      onClick={() => {
+                        setActiveTab(tab.name);
+                        setIsSidebarOpen(false);
+                      }}
+                      className={`flex items-center gap-2.5 w-full px-3 py-2 text-xs font-semibold rounded transition-colors ${
+                        active
+                          ? "bg-[#DE2626] text-white"
+                          : "text-zinc-400 hover:bg-zinc-900 hover:text-white"
+                      }`}
+                    >
+                      {tab.icon}
+                      <span>{tab.name}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           <div>
-            <div className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider px-3 mb-2">
-              System
+            <div
+              onClick={() => toggleSidebarGroup("system")}
+              className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider px-3 mb-2 flex items-center justify-between cursor-pointer hover:text-white transition-colors select-none"
+            >
+              <span>System</span>
+              <span className="font-mono text-xs">{sidebarCollapsed.system ? "[+]" : "[−]"}</span>
             </div>
-            <div className="space-y-1">
-              {[
-                { name: "Settings", icon: <SettingsIcon size={14} /> },
-                { name: "About / Reports", icon: <Info size={14} /> }
-              ].map((tab) => {
-                const active = activeTab === tab.name;
-                return (
-                  <button
-                    key={tab.name}
-                    onClick={() => {
-                      setActiveTab(tab.name);
-                      setIsSidebarOpen(false);
-                    }}
-                    className={`flex items-center gap-2.5 w-full px-3 py-2 text-xs font-semibold rounded transition-colors ${
-                      active
-                        ? "bg-[#DE2626] text-white"
-                        : "text-zinc-400 hover:bg-zinc-900 hover:text-white"
-                    }`}
-                  >
-                    {tab.icon}
-                    <span>{tab.name}</span>
-                  </button>
-                );
-              })}
-            </div>
+            {!sidebarCollapsed.system && (
+              <div className="space-y-1">
+                {[
+                  { name: "Settings", icon: <SettingsIcon size={14} /> },
+                  { name: "About / Reports", icon: <Info size={14} /> }
+                ].map((tab) => {
+                  const active = activeTab === tab.name;
+                  return (
+                    <button
+                      key={tab.name}
+                      onClick={() => {
+                        setActiveTab(tab.name);
+                        setIsSidebarOpen(false);
+                      }}
+                      className={`flex items-center gap-2.5 w-full px-3 py-2 text-xs font-semibold rounded transition-colors ${
+                        active
+                          ? "bg-[#DE2626] text-white"
+                          : "text-zinc-400 hover:bg-zinc-900 hover:text-white"
+                      }`}
+                    >
+                      {tab.icon}
+                      <span>{tab.name}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
 
@@ -1516,6 +1616,18 @@ export default function App() {
                   />
                 </div>
               </div>
+
+              <div className="flex flex-col gap-2 border-t border-zinc-800 pt-4">
+                <label className="text-xs font-semibold text-zinc-400">Gemini Developer API Key (Optional)</label>
+                <input
+                  type="password"
+                  value={geminiApiKey}
+                  onChange={(e) => setGeminiApiKey(e.target.value)}
+                  placeholder="AI Studio API Key"
+                  className="px-3 py-1.5 text-sm bg-white text-black border border-zinc-700 rounded outline-none font-mono"
+                />
+                <span className="text-[10px] text-zinc-500">Required to enable the AI Chat Client and AI Author Profile Generator.</span>
+              </div>
             </div>
           </div>
         )}
@@ -1550,6 +1662,214 @@ export default function App() {
                   ))
                 )}
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* AUTHORS SECTION */}
+        {activeTab === "Authors" && (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-bold tracking-tight">System Authors Registry</h2>
+                <p className="text-xs text-zinc-500 font-sans">Manage site authors, contributors, and generate high-character bios.</p>
+              </div>
+              <button
+                onClick={() => {
+                  setEditorKind("Author");
+                  setEditorKindMode("add");
+                  setEditorData({
+                    id: generateUuid(),
+                    name: "",
+                    role: "",
+                    bio: "",
+                    profile_image: "",
+                    created_at: new Date().toISOString()
+                  });
+                  setIsEditorOpen(true);
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-[#DE2626] text-white rounded hover:bg-[#c01f1f] transition-colors"
+              >
+                <Plus size={13} /> Add Author
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {authors.map((author) => (
+                <div key={author.id} className="p-6 bg-zinc-950 border border-zinc-800 rounded-lg relative hover:border-[#DE2626] transition-all flex flex-col sm:flex-row gap-4">
+                  <div className="absolute top-4 right-4 flex items-center gap-1.5 z-10">
+                    <button
+                      onClick={() => {
+                        setEditorKind("Author");
+                        setEditorKindMode("edit");
+                        setEditorData(author);
+                        setIsEditorOpen(true);
+                      }}
+                      className="p-1.5 rounded bg-zinc-900 border border-zinc-800 hover:border-blue-500 text-blue-500"
+                    >
+                      <Edit2 size={12} />
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (confirm("Delete this author?")) {
+                          setAuthors(authors.filter((a) => a.id !== author.id));
+                        }
+                      }}
+                      className="p-1.5 rounded bg-zinc-900 border border-zinc-800 hover:border-red-500 text-red-500"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+
+                  <div className="w-20 h-20 bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden shrink-0 flex items-center justify-center">
+                    <img
+                      src={author.profile_image || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=80&h=80&q=80"}
+                      alt={author.name}
+                      className="w-full h-full object-cover"
+                      onError={(e) => {
+                        e.currentTarget.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100%25' height='100%25'%3E%3Crect width='100%25' height='100%25' fill='%23111111'/%3E%3C/svg%3E";
+                      }}
+                    />
+                  </div>
+
+                  <div className="flex-1 flex flex-col justify-between pr-12">
+                    <div>
+                      <div className="text-[10px] text-zinc-500 font-mono tracking-widest uppercase flex items-center gap-1.5">
+                        <span>{author.role || "Contributor"}</span>
+                      </div>
+                      <h3 className="text-base font-semibold mt-1 text-white">{author.name}</h3>
+                      <p className="text-xs text-zinc-400 mt-2 leading-relaxed">{author.bio || "No biography provided yet."}</p>
+                    </div>
+                    <div className="text-[9px] text-zinc-600 font-mono mt-4">
+                      Registered: {new Date(author.created_at).toLocaleDateString()}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* AI ASSISTANT CHAT CLIENT */}
+        {activeTab === "AI Assistant" && (
+          <div className="max-w-4xl mx-auto space-y-4 flex flex-col h-[calc(100vh-17rem)]">
+            <div>
+              <h2 className="text-base font-bold tracking-tight">AI Content & System Assistant</h2>
+              <p className="text-[11px] text-zinc-500 font-sans">
+                Review website schemas, draft new blog posts, generate biographies, or search relational indexes directly through Gemini.
+              </p>
+            </div>
+
+            <div className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg flex flex-col overflow-hidden min-h-[15rem]">
+              {/* Chat messages */}
+              <div className="flex-1 p-4 overflow-y-auto space-y-4">
+                {chatMessages.map((msg, index) => (
+                  <div
+                    key={index}
+                    className={`flex ${msg.sender === "user" ? "justify-end" : "justify-start"}`}
+                  >
+                    <div
+                      className={`max-w-[80%] rounded-lg p-4 text-xs leading-relaxed font-sans ${
+                        msg.sender === "user"
+                          ? "bg-[#DE2626] text-white"
+                          : "bg-zinc-900 text-zinc-300 border border-zinc-800"
+                      }`}
+                    >
+                      <div className="font-bold text-[10px] uppercase tracking-wider font-mono mb-1 text-zinc-400">
+                        {msg.sender === "user" ? "Administrator" : "MANAGEMENT_CMS_AI"}
+                      </div>
+                      <div className="whitespace-pre-wrap">{msg.text}</div>
+                    </div>
+                  </div>
+                ))}
+                {isSending && (
+                  <div className="flex justify-start">
+                    <div className="bg-zinc-900 text-zinc-400 border border-zinc-800 rounded-lg p-4 text-xs font-mono animate-pulse">
+                      Sending query and awaiting response...
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Chat prompt shortcuts */}
+              <div className="p-3 border-t border-zinc-900 bg-zinc-900/30 flex gap-1.5 overflow-x-auto whitespace-nowrap scrollbar-none">
+                {[
+                  { label: "Draft a Blog Post", text: "Draft a new blog post titled 'Building relational engines in Vite' with high-character prose." },
+                  { label: "Audit Site Data", text: `Review our database metrics: Pages (${pages.length}), Posts (${posts.length}), Categories (${categories.length}), Authors (${authors.length}). Suggest optimization steps.` },
+                  { label: "Generate Author Bio", text: "Help me write a concise software engineer bio for a new administrator profile." }
+                ].map((shortcut) => (
+                  <button
+                    key={shortcut.label}
+                    type="button"
+                    onClick={() => setChatInput(shortcut.text)}
+                    className="px-2.5 py-1 text-[10px] font-semibold bg-zinc-900 hover:bg-[#DE2626] hover:text-white border border-zinc-800 text-zinc-400 rounded transition-colors"
+                  >
+                    {shortcut.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Message inputs */}
+              <form
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  if (!chatInput.trim() || isSending) return;
+
+                  const userMsg = chatInput.trim();
+                  setChatInput("");
+                  setChatMessages((prev) => [...prev, { sender: "user", text: userMsg }]);
+                  setIsSending(true);
+
+                  try {
+                    const res = await fetch("/api/gemini", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        prompt: `You are an AI assistant built into Elton Boehnen's Management_CMS (v5.9.1).
+The user is administering the CMS.
+Here is the current CMS Database context:
+- Pages (${pages.length} total)
+- Blog Posts (${posts.length} total)
+- Registered Authors (${authors.length} total)
+- Active Nav Links (${navLinks.length} total)
+
+User request: "${userMsg}"`,
+                        systemInstruction: "You are a professional CMS assistant. Provide accurate, high-fidelity developer responses and markdown drafts.",
+                        model: "gemini-3.8-flash",
+                        apiKey: geminiApiKey || undefined
+                      })
+                    });
+
+                    const data = await res.json();
+                    if (data.error) {
+                      setChatMessages((prev) => [...prev, { sender: "assistant", text: `Error from Gemini service: ${data.error}` }]);
+                    } else {
+                      setChatMessages((prev) => [...prev, { sender: "assistant", text: data.text }]);
+                    }
+                  } catch (err: any) {
+                    setChatMessages((prev) => [...prev, { sender: "assistant", text: `API network error: ${err.message}` }]);
+                  } finally {
+                    setIsSending(false);
+                  }
+                }}
+                className="p-4 border-t border-zinc-800 bg-black flex gap-2"
+              >
+                <input
+                  type="text"
+                  placeholder={geminiApiKey || process.env.GEMINI_API_KEY ? "Type your instructions for Gemini..." : "Configure Gemini Key in Settings to chat..."}
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  disabled={isSending}
+                  className="flex-1 px-3 py-2 text-xs font-semibold bg-white text-black rounded border border-zinc-700 outline-none placeholder-zinc-500"
+                />
+                <button
+                  type="submit"
+                  disabled={isSending}
+                  className="px-4 py-2 text-xs font-semibold bg-[#DE2626] hover:bg-[#c01f1f] text-white rounded transition-colors disabled:opacity-50 shrink-0"
+                >
+                  Send Query
+                </button>
+              </form>
             </div>
           </div>
         )}
@@ -1593,7 +1913,7 @@ export default function App() {
               {(((window as any)._aboutActiveSubTab === "about") || !((window as any)._aboutActiveSubTab)) && (
                 <div className="space-y-6">
                   <div className="space-y-2 border-b border-zinc-900 pb-4">
-                    <h3 className="text-base font-bold text-white">Management_CMS — TS/React Edition</h3>
+                    <h3 className="text-base font-bold text-white">Management CMS (React) — Relational Edition</h3>
                     <p className="text-xs text-zinc-400">
                       High-fidelity relational Content Management System executing a multi-file database engine with complete Python-spec compatibility. Built on top of the BEJSON-104 specification.
                     </p>
@@ -1603,112 +1923,121 @@ export default function App() {
                       <div>Primary Architect: <span className="text-white">Elton Boehnen</span></div>
                       <div>Contact Email: <span className="text-zinc-400">boehnenelton2024@gmail.com</span></div>
                     </div>
+                    <div className="mt-4 p-4 bg-[#050505] border border-zinc-900 rounded font-mono text-[10px] text-zinc-500 leading-normal overflow-x-auto whitespace-pre">
+                      <div className="text-[11px] font-bold text-white uppercase tracking-wider mb-2">Polyglot Multi-Framework License Registry</div>
+{`# /*
+# SPDX-License-Identifier: (Apache-2.0 OR MIT)
+#
+# Polyglot Multi-Framework License Block
+# Valid comment in: Bash, Python, JavaScript, TypeScript, CSS, HTML, JSON
+#
+# Copyright (c) 2026 Elton Boehnen <boehnenelton2024@gmail.com>
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at:
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# ---
+# MIT License Alternative:
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+# */`}
+                    </div>
                   </div>
 
-                  {/* IDENTIFIED BUGS REPORT WITH SUB-TABS (Conforming to user instruction) */}
+                  {/* IDENTIFIED BUGS REPORT WITH DOWNLOADABLE MD BUTTON (Conforming to user instruction) */}
                   <div className="space-y-4">
-                    <div className="flex items-center gap-2">
-                      <AlertTriangle size={15} className="text-[#DE2626]" />
-                      <h4 className="text-xs font-display font-bold uppercase tracking-widest text-[#DE2626]">Identified Python Version Bug Reports</h4>
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-800 pb-2">
+                      <div className="flex items-center gap-2">
+                        <AlertTriangle size={15} className="text-[#DE2626]" />
+                        <h4 className="text-xs font-display font-bold uppercase tracking-widest text-[#DE2626]">Identified Python Version Bug Reports</h4>
+                      </div>
+                      <button
+                        onClick={downloadReportsMd}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-[#DE2626] text-white hover:bg-[#c01f1f] rounded transition-colors"
+                      >
+                        <Download size={13} /> Download Reports as MD
+                      </button>
                     </div>
 
-                    {/* Sub-tab selection for bug reports */}
-                    <div className="flex items-center gap-1.5 overflow-x-auto whitespace-nowrap border-b border-zinc-900 pb-1">
-                      {[
-                        { id: "bug1", label: "Bug 1: record_count Drift" },
-                        { id: "bug2", label: "Bug 2: empty site_url fallback" },
-                        { id: "bug3", label: "Bug 3: dangling FKs" },
-                        { id: "bug4", label: "Bug 4: bearer bypass" },
-                        { id: "bug5", label: "Bug 5: storage file leak" }
-                      ].map((bugTab) => (
-                        <button
-                          key={bugTab.id}
-                          onClick={() => setActiveReportTab(bugTab.id)}
-                          className={`px-2 py-1 text-[11px] font-semibold transition-colors ${
-                            activeReportTab === bugTab.id ? "text-[#DE2626] border-b-2 border-[#DE2626]" : "text-zinc-400 hover:text-white"
-                          }`}
-                        >
-                          {bugTab.label}
-                        </button>
-                      ))}
-                    </div>
+                    <div className="space-y-4 max-h-[50vh] overflow-y-auto pr-2">
+                      <div className="bg-[#050505] border border-zinc-900 rounded p-4 text-xs space-y-2 leading-relaxed">
+                        <div className="font-bold text-white text-sm">Bug 1: ComponentsMFDB record_count Manifest Drift</div>
+                        <p className="text-zinc-400">
+                          <strong>Symptoms:</strong> MFDB manifest validators threw integrity errors because the central manifest row count disagreed with on-disk database rows.
+                        </p>
+                        <p className="text-zinc-400">
+                          <strong>Root Cause:</strong> The database manifest in the library copy of <code>ComponentsMFDB</code> hardcoded <code>record_count: 6</code> despite the actual entity table containing 7 records. This caused automatic validation passes to fail loudly on launch.
+                        </p>
+                        <p className="text-zinc-400">
+                          <strong>Mitigation:</strong> Programmatically corrected manifest <code>record_count</code> to <code>7</code> via native JSON parsing, and registered a dynamic sync hook.
+                        </p>
+                      </div>
 
-                    {/* Bug report text bodies */}
-                    <div className="bg-[#050505] border border-zinc-900 rounded p-4 text-xs space-y-2 leading-relaxed">
-                      {activeReportTab === "bug1" && (
-                        <>
-                          <div className="font-bold text-white text-sm">Bug 1: ComponentsMFDB record_count Manifest Drift</div>
-                          <p className="text-zinc-400">
-                            <strong>Symptoms:</strong> MFDB manifest validators threw integrity errors because the central manifest row count disagreed with on-disk database rows.
-                          </p>
-                          <p className="text-zinc-400">
-                            <strong>Root Cause:</strong> The database manifest in the library copy of <code>ComponentsMFDB</code> hardcoded <code>record_count: 6</code> despite the actual entity table containing 7 records. This caused automatic validation passes to fail loudly on launch.
-                          </p>
-                          <p className="text-zinc-400">
-                            <strong>Mitigation:</strong> Programmatically corrected manifest <code>record_count</code> to <code>7</code> via native JSON parsing, and registered a dynamic sync hook.
-                          </p>
-                        </>
-                      )}
+                      <div className="bg-[#050505] border border-zinc-900 rounded p-4 text-xs space-y-2 leading-relaxed">
+                        <div className="font-bold text-white text-sm">Bug 2: Empty site_url loopback fallback in OG/canonical tags</div>
+                        <p className="text-zinc-400">
+                          <strong>Symptoms:</strong> Exported static pages generated empty canonical and social OpenGraph tag properties.
+                        </p>
+                        <p className="text-zinc-400">
+                          <strong>Root Cause:</strong> The static builder pre-rendered relative tag contexts as blank values when <code>site_url</code> was empty or configured to loopback (e.g. <code>http://127.0.0.1:5030</code>) instead of cleanly degrading to root relative path <code>/</code>.
+                        </p>
+                        <p className="text-zinc-400">
+                          <strong>Mitigation:</strong> Rewrote static builders to default gracefully to root-relative pathing if the server address resolves to local interfaces.
+                        </p>
+                      </div>
 
-                      {activeReportTab === "bug2" && (
-                        <>
-                          <div className="font-bold text-white text-sm">Bug 2: Empty site_url loopback fallback in OG/canonical tags</div>
-                          <p className="text-zinc-400">
-                            <strong>Symptoms:</strong> Exported static pages generated empty canonical and social OpenGraph tag properties.
-                          </p>
-                          <p className="text-zinc-400">
-                            <strong>Root Cause:</strong> The static builder pre-rendered relative tag contexts as blank values when <code>site_url</code> was empty or configured to loopback (e.g. <code>http://127.0.0.1:5030</code>) instead of cleanly degrading to root relative path <code>/</code>.
-                          </p>
-                          <p className="text-zinc-400">
-                            <strong>Mitigation:</strong> Rewrote static builders to default gracefully to root-relative pathing if the server address resolves to local interfaces.
-                          </p>
-                        </>
-                      )}
+                      <div className="bg-[#050505] border border-zinc-900 rounded p-4 text-xs space-y-2 leading-relaxed">
+                        <div className="font-bold text-white text-sm">Bug 3: Dangling foreign keys on page/post category deletion</div>
+                        <p className="text-zinc-400">
+                          <strong>Symptoms:</strong> Deleting a category resulted in orphaned metadata tags and broken category queries inside lists.
+                        </p>
+                        <p className="text-zinc-400">
+                          <strong>Root Cause:</strong> The <code>delete_category()</code> module operated in isolation from page and post databases. As a result, deleting a category row did not reach <code>Content/Page</code> to null out referencing <code>category_id_fk</code> values.
+                        </p>
+                        <p className="text-zinc-400">
+                          <strong>Mitigation:</strong> Structured a transactional cascade handler inside the route layer to recursively scan and update active page and post manifests when category deletions occur.
+                        </p>
+                      </div>
 
-                      {activeReportTab === "bug3" && (
-                        <>
-                          <div className="font-bold text-white text-sm">Bug 3: Dangling foreign keys on page/post category deletion</div>
-                          <p className="text-zinc-400">
-                            <strong>Symptoms:</strong> Deleting a category resulted in orphaned metadata tags and broken category queries inside lists.
-                          </p>
-                          <p className="text-zinc-400">
-                            <strong>Root Cause:</strong> The <code>delete_category()</code> module operated in isolation from page and post databases. As a result, deleting a category row did not reach <code>Content/Page</code> to null out referencing <code>category_id_fk</code> values.
-                          </p>
-                          <p className="text-zinc-400">
-                            <strong>Mitigation:</strong> Structured a transactional cascade handler inside the route layer to recursively scan and update active page and post manifests when category deletions occur.
-                          </p>
-                        </>
-                      )}
+                      <div className="bg-[#050505] border border-zinc-900 rounded p-4 text-xs space-y-2 leading-relaxed">
+                        <div className="font-bold text-white text-sm">Bug 4: Admin Bearer Token Bypass on / root route</div>
+                        <p className="text-zinc-400">
+                          <strong>Symptoms:</strong> Complete security bypass of the <code>X-Admin-Token</code> bearer gate.
+                        </p>
+                        <p className="text-zinc-400">
+                          <strong>Root Cause:</strong> Version 5.1.0 exempted the root path <code>/</code> from the token verification check, but then immediately rendered the exact plaintext <code>ADMIN_TOKEN</code> into the raw HTML payload, rendering the gate entirely inert to network crawlers.
+                        </p>
+                        <p className="text-zinc-400">
+                          <strong>Mitigation:</strong> Removed the token context completely from template rendering, storing credentials exclusively inside the browser's <code>sessionStorage</code> upon positive console-assisted login.
+                        </p>
+                      </div>
 
-                      {activeReportTab === "bug4" && (
-                        <>
-                          <div className="font-bold text-white text-sm">Bug 4: Admin Bearer Token Bypass on / root route</div>
-                          <p className="text-zinc-400">
-                            <strong>Symptoms:</strong> Complete security bypass of the <code>X-Admin-Token</code> bearer gate.
-                          </p>
-                          <p className="text-zinc-400">
-                            <strong>Root Cause:</strong> Version 5.1.0 exempted the root path <code>/</code> from the token verification check, but then immediately rendered the exact plaintext <code>ADMIN_TOKEN</code> into the raw HTML payload, rendering the gate entirely inert to network crawlers.
-                          </p>
-                          <p className="text-zinc-400">
-                            <strong>Mitigation:</strong> Removed the token context completely from template rendering, storing credentials exclusively inside the browser's <code>sessionStorage</code> upon positive console-assisted login.
-                          </p>
-                        </>
-                      )}
-
-                      {activeReportTab === "bug5" && (
-                        <>
-                          <div className="font-bold text-white text-sm">Bug 5: Media delete physical file leaks</div>
-                          <p className="text-zinc-400">
-                            <strong>Symptoms:</strong> Storage space on mobile hosts became depleted after repeated media replacements.
-                          </p>
-                          <p className="text-zinc-400">
-                            <strong>Root Cause:</strong> The media delete API route cleared the relational database metadata row in <code>media.bejson</code> but omitted unlinking the actual physical image files (and their WebP variant siblings) from server storage.
-                          </p>
-                          <p className="text-zinc-400">
-                            <strong>Mitigation:</strong> Programmed filesystem unlinks on the server side preceding the database metadata deletion pass.
-                          </p>
-                        </>
-                      )}
+                      <div className="bg-[#050505] border border-zinc-900 rounded p-4 text-xs space-y-2 leading-relaxed">
+                        <div className="font-bold text-white text-sm">Bug 5: Media delete physical file leaks</div>
+                        <p className="text-zinc-400">
+                          <strong>Symptoms:</strong> Storage space on mobile hosts became depleted after repeated media replacements.
+                        </p>
+                        <p className="text-zinc-400">
+                          <strong>Root Cause:</strong> The media delete API route cleared the relational database metadata row in <code>media.bejson</code> but omitted unlinking the actual physical image files (and their WebP variant siblings) from server storage.
+                        </p>
+                        <p className="text-zinc-400">
+                          <strong>Mitigation:</strong> Programmed filesystem unlinks on the server side preceding the database metadata deletion pass.
+                        </p>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -2246,6 +2575,122 @@ export default function App() {
               </div>
             )}
 
+            {/* Form Fields: Author Editor */}
+            {editorKind === "Author" && (
+              <div className="space-y-4">
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-bold text-zinc-400">Author Name *</label>
+                  <input
+                    type="text"
+                    value={editorData.name || ""}
+                    onChange={(e) => setEditorData({ ...editorData, name: e.target.value })}
+                    className="px-3 py-2 text-sm bg-white text-black border border-zinc-700 rounded outline-none"
+                    placeholder="e.g. Elton Boehnen"
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-bold text-zinc-400">Role / Designation *</label>
+                  <input
+                    type="text"
+                    value={editorData.role || ""}
+                    onChange={(e) => setEditorData({ ...editorData, role: e.target.value })}
+                    className="px-3 py-2 text-sm bg-white text-black border border-zinc-700 rounded outline-none"
+                    placeholder="e.g. System Architect"
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-bold text-zinc-400">Profile Image URL</label>
+                  <input
+                    type="text"
+                    value={editorData.profile_image || ""}
+                    onChange={(e) => setEditorData({ ...editorData, profile_image: e.target.value })}
+                    className="px-3 py-2 text-sm bg-white text-black border border-zinc-700 rounded outline-none"
+                    placeholder="e.g. /media/1000744483.png or unsplash.com"
+                  />
+                </div>
+
+                <div className="p-4 bg-zinc-900/40 border border-zinc-800 rounded-lg space-y-3">
+                  <div className="text-xs font-bold text-[#DE2626] uppercase tracking-wider">
+                    AI Profile Generator
+                  </div>
+                  <p className="text-[11px] text-zinc-500 font-sans">
+                    Input a few highlights (separated by commas) and let Gemini draft a professional bio for you.
+                  </p>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[10px] font-bold text-zinc-400">Key Highlights</label>
+                    <input
+                      type="text"
+                      id="ai_highlights"
+                      placeholder="e.g. created the BEJSON specification, specializes in lightweight databases, senior architect"
+                      className="px-3 py-1.5 text-xs bg-white text-black border border-zinc-700 rounded outline-none"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const name = editorData.name || "";
+                      const role = editorData.role || "";
+                      const highlights = (document.getElementById("ai_highlights") as HTMLInputElement)?.value || "";
+                      if (!name || !role) {
+                        alert("Please fill in Name and Role before generating a bio.");
+                        return;
+                      }
+
+                      const btn = document.activeElement as HTMLButtonElement;
+                      if (btn) {
+                        const origText = btn.innerText;
+                        btn.innerText = "Generating Bio...";
+                        btn.disabled = true;
+
+                        try {
+                          const res = await fetch("/api/gemini", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                              prompt: `Write a highly professional, high-character 3rd-person biography for:
+Name: ${name}
+Role: ${role}
+Highlights: ${highlights}
+
+Keep the result strictly within 2-3 sentences (maximum 50 words). Do not include any meta commentary, titles, or quotes. Output only the plain bio.`,
+                              systemInstruction: "You are a professional author biographer.",
+                              model: "gemini-3.8-flash",
+                              apiKey: geminiApiKey || undefined
+                            })
+                          });
+
+                          const data = await res.json();
+                          if (data.text) {
+                            setEditorData(prev => ({ ...prev, bio: data.text.trim() }));
+                          } else {
+                            alert("Error from Gemini: " + (data.error || "empty response"));
+                          }
+                        } catch (err: any) {
+                          alert("Network error: " + err.message);
+                        } finally {
+                          btn.innerText = origText;
+                          btn.disabled = false;
+                        }
+                      }
+                    }}
+                    className="px-3 py-1.5 text-[11px] font-semibold bg-[#DE2626] text-white rounded hover:bg-[#c01f1f] transition-colors"
+                  >
+                    Generate Professional Bio
+                  </button>
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-bold text-zinc-400">Biography (Bio)</label>
+                  <textarea
+                    value={editorData.bio || ""}
+                    onChange={(e) => setEditorData({ ...editorData, bio: e.target.value })}
+                    className="px-3 py-2 text-sm bg-white text-black border border-zinc-700 rounded outline-none h-32"
+                    placeholder="Biography content goes here..."
+                  />
+                </div>
+              </div>
+            )}
+
             {/* Form Fields: Todo Editor */}
             {editorKind === "Todo" && (
               <div className="space-y-4">
@@ -2358,6 +2803,12 @@ export default function App() {
                     setTodoItems([...todoItems, editorData]);
                   } else {
                     setTodoItems(todoItems.map((ti) => ti.id === editorData.id ? editorData : ti));
+                  }
+                } else if (editorKind === "Author") {
+                  if (editorMode === "add") {
+                    setAuthors([...authors, { ...editorData, created_at: new Date().toISOString() }]);
+                  } else {
+                    setAuthors(authors.map((a) => a.id === editorData.id ? editorData : a));
                   }
                 }
                 setIsEditorOpen(false);

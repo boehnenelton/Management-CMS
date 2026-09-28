@@ -1,0 +1,100 @@
+{
+  "Format": "BEJSON",
+  "Format_Version": "104a",
+  "Format_Creator": "Elton Boehnen",
+  "Schema_Name": "Job Schema",
+  "Schema_Version": "1.0",
+  "Schema_Description": "Custom job checklist for TS/React Management_CMS conversion and additional features.",
+  "Job_Goal": "Incorporate Authors, AI Profile Generator, Gemini Chat Client, and resolve bottom page white space.",
+  "Goal_Rules": "Consistently use CMS taxonomies and conform to tri-color visual policy rules.",
+  "Job_Type": "relational_cms_rebuild",
+  "Job_Subtype": "react_typescript",
+  "Contextualize_Plan": true,
+  "Contextualize_Last": true,
+  "Job_Complete": true,
+  "Creation_Date": "2026-09-28",
+  "Completion_Date": "2026-09-28",
+  "Records_Type": [
+    "JobTask"
+  ],
+  "Fields": [
+    { "name": "task_id", "type": "string" },
+    { "name": "task_order", "type": "integer" },
+    { "name": "task_name", "type": "string" },
+    { "name": "task_description", "type": "string" },
+    { "name": "task_completed", "type": "boolean" },
+    { "name": "audit_enabled", "type": "boolean" },
+    { "name": "audit_passed", "type": "boolean" },
+    { "name": "audit_fail_reason", "type": "string" },
+    { "name": "task_context", "type": "array" },
+    { "name": "task_reference", "type": "array" },
+    { "name": "task_mandatory", "type": "boolean" }
+  ],
+  "Values": [
+    [
+      "task_rebuild_cms",
+      1,
+      "CMS Rebuild to TS/React",
+      "Convert core components to standard React and TypeScript architecture.",
+      true,
+      true,
+      true,
+      "",
+      [],
+      [],
+      true
+    ],
+    [
+      "task_authors_mfdb",
+      2,
+      "Authors MFDB Integration",
+      "Incorporate system authors section with list, add, edit, delete actions conforming to CMS taxonomies.",
+      true,
+      true,
+      true,
+      "",
+      [],
+      [],
+      true
+    ],
+    [
+      "task_profile_generator",
+      3,
+      "AI Profile Generator",
+      "Add a professional profile generator using Gemini API to auto-draft biographical statements.",
+      true,
+      true,
+      true,
+      "",
+      [],
+      [],
+      true
+    ],
+    [
+      "task_ai_assistant",
+      4,
+      "AI Assistant Chat Client",
+      "Implement a fully integrated chat client in the sidebar to review website schemas and draft posts.",
+      true,
+      true,
+      true,
+      "",
+      [],
+      [],
+      true
+    ],
+    [
+      "task_whitespace_fix",
+      5,
+      "Bottom Page Whitespace & Checkerboard CSS",
+      "Fix body dimensions and add checkerboard background grid inside base CSS layout.",
+      true,
+      true,
+      true,
+      "",
+      [],
+      [],
+      true
+    ]
+  ]
+}

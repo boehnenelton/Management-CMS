@@ -208,6 +208,18 @@ export const SCHEMAS = {
       { name: "created_at", type: "string" },
     ] as BEJSONField[],
   },
+  Author: {
+    name: "Author",
+    format: "104",
+    fields: [
+      { name: "id", type: "string" },
+      { name: "name", type: "string" },
+      { name: "role", type: "string" },
+      { name: "bio", type: "string" },
+      { name: "profile_image", type: "string" },
+      { name: "created_at", type: "string" },
+    ] as BEJSONField[],
+  },
 };
 
 /**
